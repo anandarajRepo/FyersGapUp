@@ -1,0 +1,43 @@
+version: '3.8'
+
+services:
+  gap-up-strategy:
+    build: .
+    container_name: gap_up_websocket_strategy
+    restart: unless-stopped
+
+    environment:
+      - PYTHONUNBUFFERED=1
+      - TZ=Asia/Kolkata
+
+    env_file:
+      - .env
+
+    volumes:
+      - ./logs:/app/logs
+      - ./data:/app/data
+      - ./.env:/app/.env:ro
+
+    networks:
+      - trading_network
+
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+        reservations:
+          memory: 256M
+          cpus: '0.25'
+
+    # Logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  trading_network:
+    driver: bridge

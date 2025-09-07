@@ -1,0 +1,27 @@
+# Fixed requirements.txt - Resolves dependency conflicts
+
+# Core Fyers API (let it manage its own websocket-client version)
+fyers-apiv3>=3.0.8
+
+# Data processing
+pandas>=2.1.0
+numpy>=1.24.0
+
+# HTTP requests and environment
+requests>=2.31.0
+python-dotenv>=1.0.0
+
+# Timezone handling
+pytz>=2023.3
+
+# Financial data (fallback for historical data)
+yfinance>=0.2.18
+
+# System monitoring (optional but recommended)
+psutil>=5.9.0
+
+# Development and testing (optional)
+pytest>=7.0.0
+
+# Note: websocket-client will be automatically installed by fyers-apiv3
+# at the correct version (1.6.1) to avoid conflicts
