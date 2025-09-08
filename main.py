@@ -8,6 +8,14 @@ from config.settings import FyersConfig, StrategyConfig, TradingConfig
 from config.websocket_config import WebSocketConfig
 from strategy.gap_up_strategy import GapUpStrategyWebSocket
 
+# Import the enhanced authentication system
+from utils.enhanced_auth_helper import (
+    setup_auth_only,
+    authenticate_fyers,
+    test_authentication,
+    update_pin_only
+)
+
 # Load environment variables
 load_dotenv()
 
@@ -70,21 +78,28 @@ def load_configuration():
 
 
 async def run_gap_up_strategy():
-    """Main function to run the gap-up strategy"""
+    """Main function to run the gap-up strategy with enhanced authentication"""
 
     try:
         # Load configuration
         fyers_config, strategy_config, trading_config, ws_config = load_configuration()
 
-        # Validate required configuration
-        if not all([fyers_config.client_id, fyers_config.secret_key, fyers_config.access_token]):
+        # Validate basic configuration
+        if not all([fyers_config.client_id, fyers_config.secret_key]):
             logger.error("Missing required Fyers API credentials")
-            logger.error("Please set FYERS_CLIENT_ID, FYERS_SECRET_KEY, and FYERS_ACCESS_TOKEN")
+            logger.error("Please set FYERS_CLIENT_ID and FYERS_SECRET_KEY")
+            logger.error("Run 'python main.py auth' to setup authentication")
+            return
+
+        # Enhanced authentication with auto-refresh
+        config_dict = {'fyers_config': fyers_config}
+        if not authenticate_fyers(config_dict):
+            logger.error("Authentication failed. Please run 'python main.py auth' to setup authentication")
             return
 
         # Create and run strategy
         strategy = GapUpStrategyWebSocket(
-            fyers_config=fyers_config,
+            fyers_config=config_dict['fyers_config'],
             strategy_config=strategy_config,
             trading_config=trading_config,
             ws_config=ws_config
@@ -98,16 +113,22 @@ async def run_gap_up_strategy():
 
 
 def test_websocket_connection():
-    """Test WebSocket connection independently"""
+    """Test WebSocket connection independently with enhanced authentication"""
 
     async def test():
         try:
             fyers_config, _, _, ws_config = load_configuration()
 
+            # Enhanced authentication
+            config_dict = {'fyers_config': fyers_config}
+            if not authenticate_fyers(config_dict):
+                logger.error("Authentication failed for WebSocket test")
+                return
+
             # Test WebSocket service
             from services.fyers_websocket_service import FyersWebSocketService
 
-            ws_service = FyersWebSocketService(fyers_config, ws_config)
+            ws_service = FyersWebSocketService(config_dict['fyers_config'], ws_config)
 
             def on_data(symbol, quote):
                 logger.info(f"{symbol}: Rs.{quote.ltp:.2f} ({quote.change_pct:+.2f}%)")
@@ -138,41 +159,152 @@ def test_websocket_connection():
     asyncio.run(test())
 
 
+def show_authentication_help():
+    """Show authentication help and status"""
+    print("\n=== Fyers Authentication Status ===")
+
+    # Check current credentials
+    client_id = os.environ.get('FYERS_CLIENT_ID')
+    secret_key = os.environ.get('FYERS_SECRET_KEY')
+    access_token = os.environ.get('FYERS_ACCESS_TOKEN')
+    refresh_token = os.environ.get('FYERS_REFRESH_TOKEN')
+    pin = os.environ.get('FYERS_PIN')
+
+    print(f"Client ID: {'✓ Set' if client_id else '✗ Missing'}")
+    print(f"Secret Key: {'✓ Set' if secret_key else '✗ Missing'}")
+    print(f"Access Token: {'✓ Set' if access_token else '✗ Missing'}")
+    print(f"Refresh Token: {'✓ Set' if refresh_token else '✗ Missing'}")
+    print(f"Trading PIN: {'✓ Set' if pin else '✗ Missing'}")
+
+    print(f"\n=== Authentication Options ===")
+    print(f"1. Full Setup: python main.py auth")
+    print(f"2. Test Auth: python main.py test-auth")
+    print(f"3. Update PIN: python main.py update-pin")
+
+    if not access_token:
+        print(f"\n⚠️  No access token found. Run setup first.")
+    elif not refresh_token:
+        print(f"\n⚠️  No refresh token found. Consider re-running setup for auto-refresh.")
+    elif not pin:
+        print(f"\n⚠️  No trading PIN found. Set PIN for automatic token refresh.")
+    else:
+        print(f"\n✅ Authentication setup appears complete.")
+
+
+def show_authentication_status():
+    """Show detailed authentication status"""
+    print("\n=== Fyers Authentication Status ===")
+
+    # Check current credentials
+    client_id = os.environ.get('FYERS_CLIENT_ID')
+    secret_key = os.environ.get('FYERS_SECRET_KEY')
+    access_token = os.environ.get('FYERS_ACCESS_TOKEN')
+    refresh_token = os.environ.get('FYERS_REFRESH_TOKEN')
+    pin = os.environ.get('FYERS_PIN')
+
+    print(f"Client ID: {'✓ Set' if client_id else '✗ Missing'}")
+    print(f"Secret Key: {'✓ Set' if secret_key else '✗ Missing'}")
+    print(f"Access Token: {'✓ Set' if access_token else '✗ Missing'}")
+    print(f"Refresh Token: {'✓ Set' if refresh_token else '✗ Missing'}")
+    print(f"Trading PIN: {'✓ Set' if pin else '✗ Missing'}")
+
+    # Test token validity if available
+    if access_token and client_id:
+        from utils.enhanced_auth_helper import FyersAuthManager
+        auth_manager = FyersAuthManager()
+
+        print(f"\n=== Token Validation ===")
+        if auth_manager.is_token_valid(access_token):
+            print(f"Access Token: ✓ Valid")
+        else:
+            print(f"Access Token: ✗ Invalid or Expired")
+
+    print(f"\n=== Authentication Commands ===")
+    print(f"Setup: python main.py auth")
+    print(f"Test: python main.py test-auth")
+    print(f"Update PIN: python main.py update-pin")
+
+    if not access_token:
+        print(f"\n⚠️  No access token found. Run setup first.")
+    elif not refresh_token:
+        print(f"\n⚠️  No refresh token found. Consider re-running setup for auto-refresh.")
+    elif not pin:
+        print(f"\n⚠️  No trading PIN found. Set PIN for automatic token refresh.")
+    else:
+        print(f"\n✅ Authentication setup appears complete.")
+
+
 def main():
-    """Main entry point"""
+    """Main entry point with enhanced authentication options"""
 
     if len(sys.argv) > 1:
         command = sys.argv[1].lower()
 
         if command == "run":
-            logger.info("Starting Gap-Up Strategy with WebSocket")
+            logger.info("Starting Gap-Up Strategy with Enhanced Authentication")
             asyncio.run(run_gap_up_strategy())
 
         elif command == "test":
-            logger.info("Testing WebSocket Connection")
+            logger.info("Testing WebSocket Connection with Enhanced Authentication")
             test_websocket_connection()
+
+        elif command == "auth":
+            setup_auth_only()
+
+        elif command == "test-auth":
+            test_authentication()
+
+        elif command == "update-pin":
+            update_pin_only()
+
+        elif command == "auth-status":
+            show_authentication_help()
 
         else:
             print("Available commands:")
-            print("  python main.py run   - Run the gap-up strategy")
-            print("  python main.py test  - Test WebSocket connection")
+            print("  python main.py run         - Run the gap-up strategy")
+            print("  python main.py test        - Test WebSocket connection")
+            print("  python main.py auth        - Setup Fyers authentication")
+            print("  python main.py test-auth   - Test authentication")
+            print("  python main.py update-pin  - Update trading PIN")
+            print("  python main.py auth-status - Show authentication status")
+
     else:
-        print("Gap-Up Trading Strategy with WebSocket")
-        print("=" * 50)
+        print("Gap-Up Trading Strategy with Enhanced Authentication")
+        print("=" * 60)
         print("1. Run Strategy")
         print("2. Test WebSocket Connection")
-        print("3. Exit")
+        print("3. Setup Authentication")
+        print("4. Test Authentication")
+        print("5. Update Trading PIN")
+        print("6. Show Authentication Status")
+        print("7. Exit")
 
-        choice = input("\nSelect option (1/2/3): ").strip()
+        choice = input("\nSelect option (1-7): ").strip()
 
         if choice == "1":
-            logger.info("Starting Gap-Up Strategy with WebSocket")
+            logger.info("Starting Gap-Up Strategy with Enhanced Authentication")
             asyncio.run(run_gap_up_strategy())
+
         elif choice == "2":
-            logger.info("Testing WebSocket Connection")
+            logger.info("Testing WebSocket Connection with Enhanced Authentication")
             test_websocket_connection()
+
         elif choice == "3":
+            setup_auth_only()
+
+        elif choice == "4":
+            test_authentication()
+
+        elif choice == "5":
+            update_pin_only()
+
+        elif choice == "6":
+            show_authentication_status()
+
+        elif choice == "7":
             print("Goodbye!")
+
         else:
             print("Invalid choice")
 
