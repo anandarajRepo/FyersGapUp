@@ -6,6 +6,7 @@ import logging
 import os
 import json
 import getpass
+import sys
 from typing import Optional, Tuple
 
 logger = logging.getLogger(__name__)
@@ -46,8 +47,18 @@ class FyersAuthManager:
         # Update current environment
         os.environ[key] = value
 
+    def _secure_input(self, prompt: str) -> str:
+        """Get secure input with fallback to regular input"""
+        try:
+            # Try getpass first (more secure)
+            return getpass.getpass(prompt).strip()
+        except Exception:
+            # Fallback to regular input if getpass fails
+            print("Warning: Input will be visible on screen")
+            return input(prompt.replace(":", " (visible): ")).strip()
+
     def get_or_request_pin(self) -> str:
-        """Get PIN from environment or request from user"""
+        """Get PIN from environment or request from user with better input handling"""
         if self.pin:
             return self.pin
 
@@ -55,17 +66,104 @@ class FyersAuthManager:
         print("Your trading PIN is required for security authentication.")
         print("This PIN will be saved securely in your .env file for future use.")
 
-        # Use getpass for secure PIN input (hides the input)
-        pin = getpass.getpass("Enter your Fyers trading PIN: ").strip()
+        max_attempts = 3
+        for attempt in range(max_attempts):
+            print(f"\nAttempt {attempt + 1}/{max_attempts}")
 
-        if pin:
-            # Save PIN to environment for future use
-            self.save_to_env('FYERS_PIN', pin)
-            self.pin = pin
-            print("PIN saved successfully to .env file")
-            return pin
-        else:
-            raise ValueError("PIN is required for authentication")
+            pin = self._secure_input("Enter your Fyers trading PIN: ")
+
+            if pin:
+                # Basic validation
+                if not pin.isdigit():
+                    print("PIN must contain only numbers")
+                    continue
+
+                if len(pin) < 4:
+                    print("PIN must be at least 4 digits")
+                    continue
+
+                # Save PIN to environment for future use
+                try:
+                    self.save_to_env('FYERS_PIN', pin)
+                    self.pin = pin
+                    print("PIN saved successfully to .env file")
+                    return pin
+                except Exception as e:
+                    print(f"Error saving PIN: {e}")
+                    continue
+            else:
+                print("PIN cannot be empty")
+
+        raise ValueError("PIN is required for authentication - max attempts exceeded")
+
+    def update_pin(self) -> bool:
+        """Update or change the saved PIN with better input handling"""
+        print("\n=== Update Trading PIN ===")
+        print("This will update your saved trading PIN.")
+
+        new_pin = self._secure_input("Enter new PIN: ")
+
+        if not new_pin:
+            print("PIN cannot be empty")
+            return False
+
+        if not new_pin.isdigit():
+            print("PIN must contain only numbers")
+            return False
+
+        if len(new_pin) < 4:
+            print("PIN must be at least 4 digits")
+            return False
+
+        confirm_pin = self._secure_input("Confirm new PIN: ")
+
+        if new_pin != confirm_pin:
+            print("PINs do not match!")
+            return False
+
+        try:
+            self.save_to_env('FYERS_PIN', new_pin)
+            self.pin = new_pin
+            print("PIN updated successfully")
+            return True
+        except Exception as e:
+            print(f"Error saving PIN: {e}")
+            return False
+
+    def update_pin_simple(self) -> bool:
+        """Simple PIN update method using regular input (fallback)"""
+        print("\n=== Update Trading PIN (Simple Mode) ===")
+        print("This will update your saved trading PIN.")
+        print("Warning: PIN will be visible on screen")
+
+        new_pin = input("Enter new PIN: ").strip()
+
+        if not new_pin:
+            print("PIN cannot be empty")
+            return False
+
+        if not new_pin.isdigit():
+            print("PIN must contain only numbers")
+            return False
+
+        if len(new_pin) < 4:
+            print("PIN must be at least 4 digits")
+            return False
+
+        confirm_pin = input("Confirm new PIN: ").strip()
+
+        if new_pin != confirm_pin:
+            print("PINs do not match!")
+            return False
+
+        try:
+            self.save_to_env('FYERS_PIN', new_pin)
+            self.pin = new_pin
+            print("PIN updated successfully")
+            return True
+        except Exception as e:
+            print(f"Error saving PIN: {e}")
+            return False
 
     def generate_access_token_with_refresh(self, refresh_token: str) -> Tuple[Optional[str], Optional[str]]:
         """Generate new access token using refresh token with PIN verification"""
@@ -103,7 +201,7 @@ class FyersAuthManager:
                 # Handle specific PIN-related errors
                 if 'pin' in error_msg.lower() or 'invalid pin' in error_msg.lower():
                     logging.error(f"PIN verification failed: {error_msg}")
-                    print("\n⚠️ PIN verification failed. The PIN might be incorrect.")
+                    print("\nPIN verification failed. The PIN might be incorrect.")
 
                     # Clear the saved PIN and retry
                     self.pin = None
@@ -217,13 +315,16 @@ class FyersAuthManager:
 
         # Ask for PIN during initial setup if not already saved
         if not self.pin:
-            print("\n📌 Trading PIN Setup")
+            print("\nTrading PIN Setup")
             print("Your trading PIN will be needed for future token refreshes.")
-            pin = getpass.getpass("Enter your Fyers trading PIN (will be saved securely): ").strip()
+            pin = self._secure_input("Enter your Fyers trading PIN (will be saved securely): ")
             if pin:
-                self.save_to_env('FYERS_PIN', pin)
-                self.pin = pin
-                print("PIN saved successfully")
+                if pin.isdigit() and len(pin) >= 4:
+                    self.save_to_env('FYERS_PIN', pin)
+                    self.pin = pin
+                    print("PIN saved successfully")
+                else:
+                    print("Invalid PIN format. PIN should be 4+ digits.")
 
         # Generate auth URL
         auth_url = self.generate_auth_url()
@@ -249,7 +350,7 @@ class FyersAuthManager:
                 self.save_to_env('FYERS_REFRESH_TOKEN', refresh_token)
                 print(f"FYERS_REFRESH_TOKEN saved")
 
-            print(f"\nAuthentication successful!")
+            print(f"\n🎉 Authentication successful!")
             print(f"Access Token: {access_token[:20]}...")
             if refresh_token:
                 print(f"Refresh Token: {refresh_token[:20]}...")
@@ -271,27 +372,6 @@ class FyersAuthManager:
 
         url = f"{auth_url}?" + "&".join([f"{k}={v}" for k, v in params.items()])
         return url
-
-    def update_pin(self) -> bool:
-        """Update or change the saved PIN"""
-        print("\n=== Update Trading PIN ===")
-        print("This will update your saved trading PIN.")
-
-        new_pin = getpass.getpass("Enter new PIN: ").strip()
-        confirm_pin = getpass.getpass("Confirm new PIN: ").strip()
-
-        if new_pin != confirm_pin:
-            print("❌ PINs do not match!")
-            return False
-
-        if new_pin:
-            self.save_to_env('FYERS_PIN', new_pin)
-            self.pin = new_pin
-            print("✅ PIN updated successfully")
-            return True
-        else:
-            print("❌ Invalid PIN")
-            return False
 
 
 def setup_auth_only():
@@ -391,6 +471,92 @@ def test_authentication():
 
 
 def update_pin_only():
-    """Update trading PIN only"""
+    """Update trading PIN only with improved error handling"""
     auth_manager = FyersAuthManager()
-    auth_manager.update_pin()
+
+    print("Choose PIN update method:")
+    print("1. Secure mode (PIN hidden) - Recommended")
+    print("2. Simple mode (PIN visible) - If secure mode doesn't work")
+
+    choice = input("Enter choice (1/2) [default: 1]: ").strip()
+
+    if choice == "2":
+        # Use simple mode
+        success = auth_manager.update_pin_simple()
+    else:
+        # Use regular mode with fallback
+        success = auth_manager.update_pin()
+
+    if success:
+        print("\nPIN update completed successfully!")
+        print("Your new PIN has been saved to the .env file.")
+    else:
+        print("\nPIN update failed. Please try again.")
+
+
+def test_pin_input():
+    """Test PIN input methods to see which works in your environment"""
+    print("=== Testing PIN Input Methods ===")
+
+    # Test 1: getpass
+    print("\n1. Testing getpass (secure input):")
+    try:
+        test_pin = getpass.getpass("Enter test PIN (will be hidden): ")
+        print(f"✅ getpass works! Entered: {'*' * len(test_pin)}")
+        getpass_works = True
+    except Exception as e:
+        print(f"getpass failed: {e}")
+        getpass_works = False
+
+    # Test 2: regular input
+    print("\n2. Testing regular input:")
+    try:
+        test_pin = input("Enter test PIN (will be visible): ")
+        print(f"Regular input works! Entered: {test_pin}")
+        regular_works = True
+    except Exception as e:
+        print(f"Regular input failed: {e}")
+        regular_works = False
+
+    print("\n=== Recommendations ===")
+    if getpass_works:
+        print("Use secure mode (option 1) for PIN updates")
+    elif regular_works:
+        print("Use simple mode (option 2) for PIN updates")
+        print("Note: PIN will be visible on screen")
+    else:
+        print("Both input methods failed - check your environment")
+
+    return getpass_works, regular_works
+
+
+def show_environment_info():
+    """Show information about the current environment"""
+    print("=== Environment Information ===")
+    print(f"Python Version: {sys.version}")
+    print(f"Platform: {sys.platform}")
+    print(f"Interactive: {sys.stdin.isatty()}")
+
+    # Check if running in various environments
+    environments = []
+    if 'jupyter' in sys.modules or 'IPython' in sys.modules:
+        environments.append("Jupyter/IPython")
+    if 'VSCODE_PID' in os.environ:
+        environments.append("VS Code")
+    if 'PYCHARM_HOSTED' in os.environ:
+        environments.append("PyCharm")
+    if os.environ.get('TERM_PROGRAM') == 'vscode':
+        environments.append("VS Code Terminal")
+
+    if environments:
+        print(f"Detected Environment: {', '.join(environments)}")
+    else:
+        print("Environment: Standard Terminal")
+
+    print(f"\nNote: getpass may not work in some IDEs or notebook environments.")
+
+
+if __name__ == "__main__":
+    # Quick test when run directly
+    show_environment_info()
+    test_pin_input()

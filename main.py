@@ -234,6 +234,8 @@ def show_authentication_status():
         print(f"\n✅ Authentication setup appears complete.")
 
 
+
+
 def main():
     """Main entry point with enhanced authentication options"""
 
@@ -260,6 +262,19 @@ def main():
         elif command == "auth-status":
             show_authentication_help()
 
+        elif command == "test-pin":
+            from utils.enhanced_auth_helper import test_pin_input, show_environment_info
+            show_environment_info()
+            test_pin_input()
+
+        elif command == "update-pin-simple":
+            from utils.enhanced_auth_helper import FyersAuthManager
+            auth_manager = FyersAuthManager()
+            if auth_manager.update_pin_simple():
+                print("PIN updated successfully!")
+            else:
+                print("PIN update failed!")
+
         else:
             print("Available commands:")
             print("  python main.py run         - Run the gap-up strategy")
@@ -278,9 +293,11 @@ def main():
         print("4. Test Authentication")
         print("5. Update Trading PIN")
         print("6. Show Authentication Status")
-        print("7. Exit")
+        print("7. Test PIN Input Methods")  # New option
+        print("8. Update PIN (Simple Mode)")  # New option
+        print("9. Exit")
 
-        choice = input("\nSelect option (1-7): ").strip()
+        choice = input("\nSelect option (1-9): ").strip()
 
         if choice == "1":
             logger.info("Starting Gap-Up Strategy with Enhanced Authentication")
@@ -303,6 +320,19 @@ def main():
             show_authentication_status()
 
         elif choice == "7":
+            from utils.enhanced_auth_helper import test_pin_input, show_environment_info
+            show_environment_info()
+            test_pin_input()
+
+        elif choice == "8":
+            from utils.enhanced_auth_helper import FyersAuthManager
+            auth_manager = FyersAuthManager()
+            if auth_manager.update_pin_simple():
+                print("PIN updated successfully!")
+            else:
+                print("PIN update failed!")
+
+        elif choice == "9":
             print("Goodbye!")
 
         else:
