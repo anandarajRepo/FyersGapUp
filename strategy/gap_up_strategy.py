@@ -104,8 +104,8 @@ class GapUpStrategyWebSocket:
             self.live_quotes[symbol] = live_quote
 
             # Log significant price movements
-            if abs(live_quote.change_pct) > 2.0:
-                logger.info(f"{symbol}: {live_quote.change_pct:+.2f}% - Rs.{live_quote.ltp:.2f}")
+            # if abs(live_quote.change_pct) > 2.0:
+                # logger.info(f"{symbol}: {live_quote.change_pct:+.2f}% - Rs.{live_quote.ltp:.2f}")
 
         except Exception as e:
             logger.error(f"Error handling live data update for {symbol}: {e}")
